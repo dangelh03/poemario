@@ -2,7 +2,7 @@
 titulo: Poema de ejemplo
 autor: Autor de ejemplo
 poemario: Libro de ejemplo
-anio: 2026
+año: 2026
 ---
 
 Así se ve un poema
