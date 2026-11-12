@@ -1,0 +1,28 @@
+name: Generar índice de poemas
+on:
+  push:
+    paths:
+      - 'poemas/*.md'
+  workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+jobs:
+  indice:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Crear poemas/index.json
+        run: |
+          cd poemas
+          ls *.md | sort | jq -R . | jq -s . > index.json
+      - name: Guardar cambios
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add poemas/index.json
+          git diff --staged --quiet || (git commit -m "Actualizar índice de poemas" && git push)
+      - name: Republicar la página
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X POST "repos/${{ github.repository }}/pages/builds" || true
