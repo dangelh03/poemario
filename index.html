@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<!-- ============================================================
+  MI POEMARIO — una sola página (HTML + CSS + JavaScript).
+  Copyright (C) AÑO TU NOMBRE
+  SPDX-License-Identifier: GPL-3.0-or-later
+  (La licencia cubre el CÓDIGO, no los poemas: cada poema conserva
+   los derechos de su autor.)
+  Los poemas vienen de dos sitios:
+   1) La carpeta poemas/ del repositorio (archivos .md).
+   2) Archivos .md que importas dentro de la app (se guardan
+      en el navegador de ese dispositivo).
+============================================================ -->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<!-- Hace que la página se vea bien en el celular -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mi poemario</title>
+<!-- APP INSTALABLE: el manifest describe nombre, iconos y colores de la app
+     cuando la añades a la pantalla de inicio. -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#9c4a2f">
+<!-- Lo mismo para iPhone/iPad, que usa sus propias etiquetas -->
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Poemario">
+<style>
+/* ---------- COLORES Y TIPOGRAFÍA ----------
+   Se definen como variables (--nombre) para cambiarlos en un solo sitio. */
+:root{--bg:#f6f1e7;--card:#fffdf8;--fg:#2b2622;--muted:#8a7f72;--accent:#9c4a2f;--line:#e4dccb;
+  --serif:Georgia,"Times New Roman",serif;--sans:system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:light;box-sizing:border-box;
+  /* Evita que el contenido quede bajo la barra del celular */
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+/* Modo oscuro automático si el celular lo usa */
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1b1815;--card:#252019;--fg:#ece4d6;--muted:#9b8f80;--accent:#e0956f;--line:#383026;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);min-height:100vh}
+.wrap{max-width:560px;margin:0 auto;padding:16px 16px 60px}
+h1{font-family:var(--serif);font-weight:normal;font-size:1.5rem;margin:8px 0 12px}
+nav{display:flex;gap:6px;margin-bottom:16px}
+nav button{flex:1;padding:10px;border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:10px;font:inherit;cursor:pointer}
+nav button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+/* Tarjeta de poema (estilo "receta") */
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px 20px;margin-bottom:14px}
+.card h2{font-family:var(--serif);font-weight:normal;font-size:1.35rem;margin:0 0 4px}
+.meta{color:var(--muted);font-size:.9rem;margin-bottom:16px}
+.meta b{color:var(--accent);font-weight:600}
+/* Cada estrofa es un <p>. pre-wrap respeta saltos de línea y sangrías del .md */
+.txt p{font-family:var(--serif);font-size:1.1rem;line-height:1.7;white-space:pre-wrap;margin:0 0 1.2em}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.row button{padding:9px 14px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--fg);font:inherit;font-size:.9rem;cursor:pointer}
+.row button.pri{background:var(--accent);color:#fff;border-color:var(--accent)}
+.row button.fav{color:var(--accent)}
+input,textarea{width:100%;padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg);font:inherit;margin-bottom:10px}
+textarea{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9rem;min-height:260px;resize:vertical}
+.item{cursor:pointer;padding:14px 16px}
+.item h3{font-family:var(--serif);font-weight:normal;margin:0 0 2px;font-size:1.1rem}
+.item span,.sm{color:var(--muted);font-size:.88rem}
+.empty{color:var(--muted);text-align:center;padding:40px 10px;line-height:1.6}
+/* Capa superpuesta (lector, formulario) */
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-start;justify-content:center;overflow-y:auto;padding:calc(env(safe-area-inset-top,0px) + 16px) 12px 24px;z-index:20}
+.ov.show{display:flex}
+.ov .card{width:100%;max-width:560px;margin:0}
+/* Aviso temporal ("Copiado") */
+#aviso{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 20px);transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:20px;font-size:.9rem;display:none;z-index:30;max-width:90%}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Mi poemario</h1>
+  <nav>
+    <button id="t-hoy">Hoy</button>
+    <button id="t-bib">Biblioteca</button>
+    <button id="t-add">+ Añadir</button>
+  </nav>
+  <main id="main"></main> <!-- aquí se dibuja cada pantalla -->
+</div>
+<div class="ov" id="ov"><div class="card" id="ovc"></div></div> <!-- capa superpuesta -->
+<div id="aviso"></div>
+
+<script>
+/* ================= 1. ESTADO =================
+   Las variables que guardan lo que la app "sabe" en cada momento. */
+var repoPoems = [];     // poemas leídos de la carpeta poemas/ (vienen de GitHub)
+var localPoems = [];    // poemas importados en la app (viven en el navegador)
+var favs = {};          // favoritos: { idDelPoema: true }
+var view = 'hoy';       // pantalla actual: 'hoy' | 'bib'
+var offset = 0;         // cuántas veces pulsaste "Otro poema" hoy
+var query = '', onlyFav = false, repoError = '';
+
+/* ================= 2. ALMACENAMIENTO LOCAL =================
+   localStorage guarda texto en el navegador. Todo va dentro de try/catch
+   porque puede estar bloqueado (modo privado, por ejemplo). */
+function leer(clave, porDefecto) {
+  try { var v = localStorage.getItem(clave); return v ? JSON.parse(v) : porDefecto; }
+  catch (e) { return porDefecto; }
+}
+function guardar(clave, valor) {
+  try { localStorage.setItem(clave, JSON.stringify(valor)); } catch (e) {}
+}
+localPoems = leer('poemas_locales', []);
+favs = leer('favoritos', {});
+
+/* ================= 3. LEER UN .md =================
+   Un poema es: front matter (entre ---) + cuerpo.
+   Devuelve un objeto con los campos separados. */
+function parseMd(md, id, origen) {
+  md = md.replace(/\r\n/g, '\n').replace(/^\uFEFF/, ''); // normaliza saltos de línea
+  var meta = {}, cuerpo = md;
+  var m = md.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/); // separa cabecera y cuerpo
+  if (m) {
+    m[1].split('\n').forEach(function (linea) {
+      var i = linea.indexOf(':');                       // "clave: valor"
+      if (i > 0) meta[linea.slice(0, i).trim().toLowerCase()] =
+        linea.slice(i + 1).trim().replace(/^["']|["']$/g, ''); // quita comillas
+    });
+    cuerpo = m[2];
+  }
+  return { id: id, origen: origen, md: md,
+    titulo: meta.titulo || '', autor: meta.autor || '',
+    poemario: meta.poemario || '', anio: meta.anio || '',
+    cuerpo: cuerpo.replace(/^\n+|\s+$/g, '') };
+}
+
+/* ================= 4. MARKDOWN → HTML =================
+   Primero se "escapa" el texto (para que nada se interprete como HTML),
+   y luego se convierte **negrita** y *cursiva*. */
+function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function inline(s) {
+  return esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+               .replace(/\*(.+?)\*/g, '<em>$1</em>');
+}
+// Cada bloque separado por línea en blanco es una estrofa (<p>).
+function htmlCuerpo(texto) {
+  return texto.split(/\n\s*\n/).map(function (e) { return '<p>' + inline(e) + '</p>'; }).join('');
+}
+
+/* ================= 5. CARGAR LOS POEMAS DEL REPOSITORIO =================
+   1) Lee poemas/index.json (lista de nombres de archivo).
+   2) Descarga cada .md y lo convierte con parseMd. */
+function cargarRepo() {
+  return fetch('poemas/index.json', { cache: 'no-cache' })
+    .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+    .then(function (nombres) {
+      return Promise.all(nombres.map(function (n) {
+        return fetch('poemas/' + encodeURIComponent(n), { cache: 'no-cache' })
+          .then(function (r) { return r.ok ? r.text() : null; })
+          .then(function (t) { return t ? parseMd(t, 'repo:' + n, 'repo') : null; })
+          .catch(function () { return null; }); // si uno falla, no se cae todo
+      }));
+    })
+    .then(function (ps) { repoPoems = ps.filter(function (p) { return p && p.titulo; }); })
+    .catch(function () {
+      repoError = 'No pude leer poemas/index.json (¿abriste el archivo directamente en vez de por la web?).';
+    });
+}
+
+/* ================= 6. UTILIDADES ================= */
+function todos() { return repoPoems.concat(localPoems); }
+// Quita tildes y mayúsculas, para que buscar "cancion" encuentre "Canción".
+function norm(s) { return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
+function slug(p) { return norm(p.autor + ' ' + p.titulo).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'poema'; }
+function el(tag, cls, txt) { var n = document.createElement(tag); if (cls) n.className = cls; if (txt != null) n.textContent = txt; return n; }
+function btn(label, fn, cls) { var b = el('button', cls || '', label); b.onclick = fn; return b; }
+function aviso(msg) {
+  var a = document.getElementById('aviso'); a.textContent = msg; a.style.display = 'block';
+  setTimeout(function () { a.style.display = 'none'; }, 3500);
+}
+// El poema del día depende de la fecha: mismo día → mismo poema.
+function indiceDelDia(n) {
+  var d = new Date();
+  return (d.getFullYear() * 400 + d.getMonth() * 31 + d.getDate() + offset) % n;
+}
+
+/* ================= 7. DIBUJAR UN POEMA ================= */
+function tarjeta(p, enLector) {
+  var c = el('div', 'card');
+  c.appendChild(el('h2', '', p.titulo));
+  var m = el('div', 'meta');
+  m.appendChild(el('b', '', p.autor || 'Autor desconocido'));
+  var extra = [p.poemario, p.anio].filter(Boolean).join(', ');
+  if (extra) m.appendChild(document.createTextNode(' · ' + extra));
+  c.appendChild(m);
+  var t = el('div', 'txt'); t.innerHTML = htmlCuerpo(p.cuerpo); c.appendChild(t);
+
+  var r = el('div', 'row');
+  // Favorito: se guarda por id del poema
+  r.appendChild(btn(favs[p.id] ? '♥ Favorito' : '♡ Favorito', function () {
+    if (favs[p.id]) delete favs[p.id]; else favs[p.id] = true;
+    guardar('favoritos', favs); cerrar(); pintar();
+  }, favs[p.id] ? 'fav' : ''));
+  // Copiar el .md: útil para pasar un poema local al repositorio
+  r.appendChild(btn('Copiar .md', function () {
+    try { navigator.clipboard.writeText(p.md); } catch (e) {}
+    aviso('Copiado. Nombre sugerido: ' + slug(p) + '.md');
+  }));
+  if (p.origen === 'local') {   // solo los locales se editan/borran aquí
+    r.appendChild(btn('Editar', function () { abrirFormulario(p); }));
+    r.appendChild(btn('Borrar', function () {
+      if (confirm('¿Borrar este poema?')) {
+        localPoems = localPoems.filter(function (x) { return x.id !== p.id; });
+        guardar('poemas_locales', localPoems); cerrar(); pintar();
+      }
+    }));
+  }
+  if (enLector) r.appendChild(btn('Cerrar', cerrar));
+  c.appendChild(r);
+  if (p.origen === 'repo') c.appendChild(el('div', 'sm', 'Este poema vive en GitHub: edítalo allí.')).style.marginTop = '12px';
+  return c;
+}
+
+/* ================= 8. PANTALLAS ================= */
+function pintar() {
+  document.getElementById('t-hoy').className = view === 'hoy' ? 'on' : '';
+  document.getElementById('t-bib').className = view === 'bib' ? 'on' : '';
+  var m = document.getElementById('main'); m.innerHTML = '';
+  var lista = todos();
+  if (repoError) m.appendChild(el('div', 'sm', repoError)).style.marginBottom = '12px';
+
+  if (view === 'hoy') {
+    if (!lista.length) {
+      var e = el('div', 'empty', 'Aún no hay poemas.\nSube archivos .md a la carpeta poemas/ o usa «+ Añadir».');
+      e.style.whiteSpace = 'pre-line'; m.appendChild(e); return;
+    }
+    // Se ordena por id para que el poema del día no cambie al reordenar
+    var ord = lista.slice().sort(function (a, b) { return a.id < b.id ? -1 : 1; });
+    m.appendChild(el('div', 'sm', 'Poema del día')).style.marginBottom = '8px';
+    m.appendChild(tarjeta(ord[indiceDelDia(ord.length)]));
+    if (ord.length > 1) {
+      var r = el('div', 'row');
+      r.appendChild(btn('Otro poema', function () { offset++; pintar(); }));
+      m.appendChild(r);
+    }
+  } else {
+    var s = document.createElement('input');
+    s.placeholder = 'Buscar por título, autor, poemario o verso…'; s.value = query;
+    s.oninput = function () { query = s.value; ul.innerHTML = ''; llenar(); };
+    m.appendChild(s);
+    var r2 = el('div', 'row'); r2.style.margin = '0 0 14px';
+    r2.appendChild(btn(onlyFav ? '♥ Solo favoritos' : '♡ Solo favoritos', function () { onlyFav = !onlyFav; pintar(); }, onlyFav ? 'pri' : ''));
+    r2.appendChild(btn('Copia de seguridad', abrirCopia));
+    m.appendChild(r2);
+    var ul = el('div'); m.appendChild(ul);
+    var llenar = function () {
+      var q = norm(query);
+      var res = lista.filter(function (p) {
+        if (onlyFav && !favs[p.id]) return false;
+        return !q || norm([p.titulo, p.autor, p.poemario, p.cuerpo].join(' ')).indexOf(q) > -1;
+      }).sort(function (a, b) { return norm(a.titulo) < norm(b.titulo) ? -1 : 1; });
+      if (!res.length) { ul.appendChild(el('div', 'empty', 'No hay resultados.')); return; }
+      res.forEach(function (p) {
+        var it = el('div', 'card item');
+        it.appendChild(el('h3', '', (favs[p.id] ? '♥ ' : '') + p.titulo));
+        it.appendChild(el('span', '', [p.autor, p.poemario].filter(Boolean).join(' · ') + (p.origen === 'local' ? ' · local' : '')));
+        it.onclick = function () { abrirLector(p); };
+        ul.appendChild(it);
+      });
+    };
+    llenar();
+  }
+}
+
+/* ================= 9. CAPA SUPERPUESTA ================= */
+function mostrar() { document.getElementById('ov').className = 'ov show'; }
+function cerrar() { document.getElementById('ov').className = 'ov'; }
+document.getElementById('ov').onclick = function (e) { if (e.target === this) cerrar(); }; // clic fuera
+function abrirLector(p) {
+  var c = document.getElementById('ovc'); c.innerHTML = '';
+  var t = tarjeta(p, true);
+  while (t.firstChild) c.appendChild(t.firstChild); // reutiliza el contenido de la tarjeta
+  mostrar();
+}
+
+/* ================= 10. AÑADIR / EDITAR (.md) =================
+   Dos formas: subir archivos .md, o pegar/escribir el texto. */
+var PLANTILLA = '---\ntitulo: \nautor: \npoemario: \nanio: \n---\n\nPrimer verso\nsegundo verso\n\nPrimera línea de la segunda estrofa';
+
+function guardarMd(md, idExistente) {
+  var id = idExistente || 'local:' + Date.now() + Math.floor(Math.random() * 1000);
+  var p = parseMd(md, id, 'local');
+  if (!p.titulo || !p.cuerpo) return false;            // exige título y texto
+  var i = localPoems.findIndex(function (x) { return x.id === id; });
+  if (i > -1) localPoems[i] = p; else localPoems.push(p);
+  guardar('poemas_locales', localPoems);
+  return true;
+}
+
+function abrirFormulario(p) {
+  var c = document.getElementById('ovc'); c.innerHTML = '';
+  c.appendChild(el('h2', '', p ? 'Editar poema' : 'Añadir poemas'));
+
+  if (!p) { // subir archivos solo al añadir
+    c.appendChild(el('p', 'sm', 'Sube uno o varios archivos .md:'));
+    var f = document.createElement('input');
+    f.type = 'file'; f.multiple = true; f.accept = '.md,.markdown,.txt';
+    f.onchange = function () {
+      var archivos = Array.prototype.slice.call(f.files), ok = 0, mal = 0, pend = archivos.length;
+      archivos.forEach(function (a) {
+        var lector = new FileReader();                 // lee el archivo en el navegador
+        lector.onload = function () { if (guardarMd(lector.result)) ok++; else mal++; fin(); };
+        lector.onerror = function () { mal++; fin(); };
+        lector.readAsText(a);
+      });
+      function fin() {
+        if (--pend) return;
+        aviso(ok + ' añadido(s)' + (mal ? ', ' + mal + ' sin título o vacío(s)' : ''));
+        cerrar(); view = 'bib'; pintar();
+      }
+    };
+    c.appendChild(f);
+    c.appendChild(el('p', 'sm', 'O pega / escribe el .md aquí:'));
+  }
+
+  var x = document.createElement('textarea'); x.value = p ? p.md : PLANTILLA; c.appendChild(x);
+  var r = el('div', 'row');
+  r.appendChild(btn('Guardar', function () {
+    if (guardarMd(x.value, p && p.id)) { cerrar(); view = 'bib'; pintar(); }
+    else alert('El poema necesita «titulo:» en la cabecera y algo de texto.');
+  }, 'pri'));
+  r.appendChild(btn('Cancelar', cerrar));
+  c.appendChild(r);
+  mostrar();
+}
+
+/* ================= 11. COPIA DE SEGURIDAD =================
+   Solo para los poemas LOCALES y favoritos (los de GitHub ya están a salvo). */
+function abrirCopia() {
+  var c = document.getElementById('ovc'); c.innerHTML = '';
+  c.appendChild(el('h2', '', 'Copia de seguridad'));
+  c.appendChild(el('p', 'sm', 'Guarda este texto en tus notas. Para restaurar, pégalo aquí y pulsa Importar.'));
+  var x = document.createElement('textarea');
+  x.value = JSON.stringify({ locales: localPoems, favoritos: favs }); c.appendChild(x);
+  var r = el('div', 'row');
+  r.appendChild(btn('Copiar', function () { x.select(); try { navigator.clipboard.writeText(x.value); aviso('Copiado'); } catch (e) {} }));
+  r.appendChild(btn('Importar', function () {
+    try {
+      var d = JSON.parse(x.value);
+      if (!Array.isArray(d.locales)) throw 0;
+      if (confirm('Esto reemplaza tus poemas locales y favoritos. ¿Seguir?')) {
+        localPoems = d.locales; favs = d.favoritos || {};
+        guardar('poemas_locales', localPoems); guardar('favoritos', favs); cerrar(); pintar();
+      }
+    } catch (e) { alert('Ese texto no es una copia válida.'); }
+  }, 'pri'));
+  r.appendChild(btn('Cerrar', cerrar));
+  c.appendChild(r);
+  mostrar();
+}
+
+/* ================= 12. ARRANQUE =================
+   Conecta los botones, dibuja la pantalla y luego carga los poemas de GitHub. */
+document.getElementById('t-hoy').onclick = function () { view = 'hoy'; pintar(); };
+document.getElementById('t-bib').onclick = function () { view = 'bib'; pintar(); };
+document.getElementById('t-add').onclick = function () { abrirFormulario(); };
+pintar();
+cargarRepo().then(pintar);
+
+/* ================= 13. SIN CONEXIÓN =================
+   Registra sw.js (el service worker). Tras la primera visita con internet,
+   la app y todos los poemas quedan guardados y funcionan sin conexión.
+   Solo se activa por http(s), no al abrir el archivo directamente. */
+if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
+  navigator.serviceWorker.register('sw.js').catch(function () {});
+}
+</script>
+</body>
+</html>
